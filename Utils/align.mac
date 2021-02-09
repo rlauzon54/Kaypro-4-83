@@ -1,0 +1,110 @@
+.z80
+; kaypro alignment test routine
+;
+; first a program to move this routine above 8000h
+; so we can turn on the other page of memory
+; and address the video page directly
+;
+start:
+	ld	hl,first+1
+	ld	de,dest
+	ld	bc,last-first1
+	ldir
+	jp	dest
+;
+;
+dest	equ	08000h
+first:	defb	0
+;
+	.phase dest
+;
+;begining of the program
+; first turn off the drives and turn on the vid page
+;
+first1:
+	in	a,(01ch)
+	set	7,a	;turn on the vid page
+	set	6,a	;turn off drives
+	res	0,a	;turn off drive a light
+	res	1,a	;turn off drive b light
+	out	(01ch),a
+;
+	ld	hl,3000h	;begining of the vid page
+	ld	(hl),'H'
+	ld	de,3000h+1
+	ld	bc,3*1024		;how many
+	ldir
+;
+;	now vid page filled with H
+;
+	ld	hl,msg1
+	ld	de,03580h	;line 12
+	ld	bc,80
+	ldir
+;
+	ld	hl,msg2
+	ld	de,03600h	;line 13
+	ld	bc,80
+	ldir
+;
+loop:
+	call	delay
+	call	aon
+	call	delay
+	call	aoff
+	call	delay
+	call	bon
+	call	delay
+	call	boff
+	jp	loop
+;
+;
+aon:
+	in	a,(01ch)
+	set	0,a
+	out	(01ch),a
+	ret
+aoff:
+	in	a,(01ch)
+	res	0,a
+	out	(01ch),a
+	ret
+bon:
+	in	a,(01ch)
+	set	1,a
+	out	(01ch),a
+	ret
+boff:
+	in	a,(01ch)
+	res	1,a
+	out	(01ch),a
+	ret
+;
+delay:
+	ld	bc,2
+delay0:
+	ld	hl,0
+delay1:
+	dec	hl
+	ld	a,h
+	or	l
+	jp	nz,delay1
+	dec	bc
+	ld	a,b
+	or	c
+	jp	nz,delay0
+	ret
+;
+;
+;		'12345678901234567890123456789012
+msg1:	defb	'HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH'
+	defb	'    KAY','P' OR 080H,'R' OR 080H,'O II   '
+	defb	'HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH'
+msg2:	defb	'HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH'
+	defb	' crt ad','j' or 080h,'u' or 080h,'stment '
+	defb	'HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH'
+;
+last:
+	defb	0,0,0
+	end	start
+;

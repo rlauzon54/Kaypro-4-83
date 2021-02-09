@@ -1,0 +1,127 @@
+      VT100 is a revision of a program that uses the Kaypro to
+   emulate some of the functions of a DEC VT100 terminal.  It
+   works about the same as the Kaypro-supplied TERM program,
+   but intercepts incoming and outgoing codes and translates
+   them from/to the equivalent DEC VT100 codes.  The program
+   does not buffer I/O, and has a baud rate limitation of about
+   2400 (determined empirically).  No attempt has been made to
+   optimize the code for speed.  There was a block of
+   documentation at the top of the original assembler source
+   file, which has been reproduced below.  Some of the codes
+   that are translated are explained on the screen that is
+   displayed when the program is started.  For the first time
+   user, it is worth just running the program "off line" once
+   in order to read this first screen.  The program is set to
+   run at 1200 baud, no parity, 8 data bits, and 1 stop bit.
+   Information on changing the baud rate is in the source
+   file.
+
+      The purpose of the revision was to be able to use the EDT
+   editor, which makes extensive use of the VT100 keypad and
+   the arrow keys.  After a lot of work, only mixed success has
+   been achieved.  The program works, but cannot handle the
+   screen in the same fashion as a real VT100. Essentially, the
+   user must continually repaint the screen to make sure that
+   he is editing what he thinks he is.  The problems that still
+   remain to be solved involve the scrolling region, and VT100
+   set scroll commands which are used in line deletion.  To
+   handle this correctly, you would have to keep track of what
+   lines are on your screen, and manage them within the
+   program.  See a DEC VT100 manual for more information.
+
+      The program expects the keypad and arrow keys to be
+   re-configured.  This is done by running the CONFIG program
+   that comes on your system disk.  Each of the keypad and
+   arrow keys should be set to their original code plus '80'
+   HEX, or in other words, the high order bit should be turned
+   on.  Once the disk has been re-configured, you must insert
+   it in drive A and hit the reset button in back.
+
+      A real VT100 has an extra row of keys above the keypad
+   called function keys.  This program emulates these keys by
+   using a 'shift' key (the back-slash '\') followed by one of
+   the arrow keys, e.g.  PF1 is obtained by hitting the '\' key
+   followed by the up arrow key.  If you hit anything except an
+   arrow key, the back-slash will be ignored.  To enter a
+   back-slash, just hit it twice.
+
+      All VT100 incoming codes should be recognized, but many
+   of them are ignored.  See comments in the source listing.
+   Unrecognizable codes may produce a debug message, which is a
+   colon followed by the byte in hex.  If an escape sequence
+   which is unknown to the program appears, the program will
+   show a solid block followed by a '[' and the parameters in
+   hex.  The assembler source contains code used for debugging,
+   it should be edited out before assembly (look for DEBUG with
+   an editor).
+
+      The original author was:
+
+       Tony Drake,  13017 Parkland DR., Rockville, MD 20853
+
+      and the current modifier is:
+
+     Jack Mathis, 1363 Birch Hill Rd., Mountainside, NJ 07092
+
+      Comments and/or suggestions are welcome.
+
+      Copyright 1983,1985 by Anthony Drake and Jack Mathis.
+   Permission is hereby given to copy and use this material
+   freely, as long as no charge is made except for reasonable
+   distribution expenses.
+
+
+      The current assembler source is written for Z80MR, the
+   public domain Z80 assembler.
+
+      The following comments were extracted from the top of the
+   original assembler code:
+
+   ;
+   ;     * WRITTEN FOR MICROSOFT'S MACRO-80 ASSEMBLER
+   ;
+   ;
+   ;     *****************************************************************
+   ;     *                                                               *
+   ;     *                  DEC VT100 TERMINAL EMULATOR                  *
+   ;     *                                                               *
+   ;     *  THIS PROGRAM WAS CREATED BY DISASSEMBLING THE KAYPRO "TERM"  *
+   ;     *  PROGRAM, THEN EXTENSIVELY MODIFYING IT TO HAVE IT MAKE       *
+   ;     *  CODE SUBSTITUTIONS APPROPRIATE FOR A VT100 TERMINAL. NOT     *
+   ;     *  EVERY VT100 CODE IS HANDLED (BY FAR). A LIST OF THE CODE     *
+   ;     *  FUNCTIONS THAT ARE HANDLED IS DISPLAYED ON THE SCREEN        *
+   ;     *  WHEN THE PROGRAM FIRST STARTS UP.                            *
+   ;     *                                                               *
+   ;     *  NOTE THAT THIS IMPLEMENTATION HAS NO BUFFERING CAPABILITY,   *
+   ;     *  AS DOES THE VT100. THIS MEANS THERE IS A LIMIT TO THE        *
+   ;     *  AMOUNT OF TIME AVAILABLE FOR CODE PROCESSING WITHOUT         *
+   ;     *  LOSING CHARACTERS BEING INPUT. WITH THE STANDARD KAYPRO II   *
+   ;     *  CLOCK SPEED, SOME INPUT CHARACTERS WERE LOST WHEN 4800       *
+   ;     *  BAUD WAS USED. THIS OCURRED WHEN A CURSOR-POSITIONING        *
+   ;     *  SEQUENCE WAS BEING TRANSLATED (THE WORST CASE). THERE IS     *
+   ;     *  AN ADDITIONAL CONSTRAINT AFTER THE SCREEN FILLS UP, AND      *
+   ;     *  A SCROLL UP IS REQUIRED. THE KAYPRO BIOS PERFORMS THIS       *
+   ;     *  IN SOFTWARE, MOVING ALL 1920 CHARACTERS UP. THIS TAKES A     *
+   ;     *  NOTICEABLE AMOUNT OF TIME, AND ANY CHARACTERS COMING IN      *
+   ;     *  THE SERIAL PORT JUST THEN WILL BE LOST. SO FAR, EVERY-       *
+   ;     *  THING SEEMS TO KEEP UP AT 2400 BAUD. THE BAUD RATE IS        *
+   ;     *  SET INTERNALLY SO THAT THE "BAUD" PROGRAM NEED NOT BE        *
+   ;     *  RUN BEFORE EVERY EXECUTION OF THIS PROGRAM,. THE VALUE       *
+   ;     *  USED TO SET THE BAUD IS STORED AT ADDRESS 103H SO THAT IT    *
+   ;     *  CAN BE CHANGED WITH A "DDT" PATCH WITHOUT REASSEMBLING.      *
+   ;     *  (A VALUE OF 5 WILL YIELD 300 BAUD, 7 GIVES 1200, AND 10      *
+   ;     *  GIVES 2400 BAUD. OTHER VALUES ARE POSSIBLE.) THIS VERSION    *
+   ;     *  IS SET FOR 1200 BAUD, NO PARITY, 8 DATA BITS, AND 1 STOP     *
+   ;     *  BIT. EXCEPT FOR THE BAUD RATE, THESE VALUES ARE DEFINED      *
+   ;     *  BY CONSTANTS AT THE VERY END OF THE PROGRAM.                 *
+   ;     *                                                               *
+   ;     *  COMMENTS/SUGESTIONS: TONY DRAKE (301)-942-0342      NOV '83  *
+   ;     *                       13017 PARKLAND DRIVE                    *
+   ;     *                       ROCKVILLE, MARYLAND  20853              *
+   ;     *                                                               *
+   ;     * COPYRIGHT 1983 BY ANTHONY DRAKE. PERMISSION IS HEREBY GIVEN   *
+   ;     * TO FREELY COPY AND USE THIS MATERIAL, AS LONG AS NO CHARGE    *
+   ;     * IS MADE, EXCEPT FOR REASONABLE DISTRIBUTION EXPENSES.         *
+   ;     *                                                               *
+   ;     *****************************************************************
+   ;

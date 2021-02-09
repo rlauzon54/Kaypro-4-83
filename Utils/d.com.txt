@@ -1,0 +1,37 @@
+PEELING ONIONS WITHOUT CRYING
+by Gail Hall, PC.BUG, June 1987
+
+(Uncovering some secrets of D.COM)
+
+How is using computers like peeling onions?  When you peel onions
+they make you cry, and so does using computers -- sometimes. 
+Also, onions have lots of layers.  As you get one layer off,
+another layer is there to be worked at.  In the same way, while
+using computers, you can start at the surface, but as you get
+that layer off, you find more interesting stuff under that one,
+and then another and another.
+
+A simple example of this happened to me just recently.  My system
+came with a program called D>COM on the CP/M program disk.  I
+have used this program many times.  However, when I first read
+the instructions, I did not understand a lot of what I was
+reading, so I remembered only what I did understand.  I was
+glancing through my "Read Me First" book and noticed the
+instructions for using D.COM.  Lo and behold, the instructions
+described some parameters which this author called switches.
+
+If you type $UVS at the end of the command line, the directory
+will display the user area, attributes, and system files.  $u
+alone shows files in all user areas.  $v shows all these files
+plus it displays the user number (UN).  $s shows the system files
+which are normally not displayed.  These parameters, or switches,
+can be used together or individually.  you can find the user
+number for an individual file by typing:
+
+D filename $uvs
+
+or
+
+D b:filename $uvs
+
+So another layer is off, and I'm not crying.

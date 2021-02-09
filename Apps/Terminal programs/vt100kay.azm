@@ -1,0 +1,752 @@
+;
+;   Written for Z80MR, the Z80 public domain assembler
+;    distributed by MICRO CORNUCOPIA
+;
+;   There are three versions of this program included here,
+;    intended to aid in debugging.  VT100DBG shows all
+;    characters coming from the host, separated by ':',
+;    VT100D, shows only escape sequences which were not
+;    anticipated, and VT100 doesn't show anything unless it
+;    gets confused, then it uses a solid block followed by
+;    the character in hex.
+;
+;   The original comments were moved to the DOC file
+;
+;   Modifications have been made to use a re-configured
+;    keypad & cursors, and support better screen usage,
+;    in an attempt to be able to use EDT keypad editing.
+;
+;	S. J. Mathis		10/85
+;       1363 Birch Hill Rd.
+;       Mountainside, NJ 07092
+;
+        ORG     100H
+BDOS    EQU     05H    ;ENTRY POINT FOR BDOS
+SSTAT   EQU     06H    ;PORT NUMBER FOR SERIAL PORT STATUS
+SDATA   EQU     04H    ;PORT NUMBER FOR SERIAL PORT DATA
+KBDATA  EQU     05H    ;PORT NUMBER FOR KEYBOARD DATA
+ESC     EQU     1BH    ;HEX CODE FOR ESCAPE
+CR      EQU     0DH    ;HEX CODE FOR CARRIAGE RETURN
+CTRLMN  EQU     1FH    ;HEX CODE FOR CONTROL-MINUS
+BCKSL   EQU     5CH    ;HEX CODE FOR BACK-SLASH
+GOCPM   EQU     00H    ;CP/M WARM START ADDRESS
+CURUP   EQU     8BH    ;NEW CONTROL CODE FOR CURSOR-UP
+CURDWN  EQU     8AH    ;NEW CONTROL CODE FOR CURSOR-DOWN
+CURRT   EQU     8CH    ;NEW CONTROL CODE FOR CURSOR-RIGHT
+CURLFT  EQU     88H    ;NEW CONTROL CODE FOR CURSOR-LEFT
+;
+BEGIN:  JP      START
+;
+BAUD:   DEFB    07H             ;BAUD RATE STORED HERE FOR
+;                                EASY PATCHING
+;
+START   EQU     $               ;INITIALIZATION
+        CALL    CLRSCR          ;CLEAR THE SCREEN
+        CALL    PRINT1          ;DISPLAY STARTING MESSAGE
+        LD      A,(BAUD)        ;SELECT BAUD RATE VALUE
+        OUT     (0),A           ;SET THE BAUD RATE
+        LD      C,SSTAT         ;PROGRAM THE SIO
+        LD      A,(SSIZE)
+        LD      B,A
+        LD      HL,SPROG
+        OTIR
+;
+IFESC   EQU     $               ;CHECK FOR ESCAPE KEY
+        CALL	KBIN		;   (USED TO ABORT PROGRAM)
+        JR      Z,IFESC
+        CP      ESC
+        JR      NZ,IFCR
+        RET
+;
+IFCR    EQU     $               ;CHECK FOR CAR. RET.
+        CP      CR              ;   (USED TO START PROCESSING)
+        JR      Z,CONT
+        CALL    BEEP
+        JR      IFESC
+;
+CONT    EQU     $               ;READY TO START WORK
+        CALL    CLRSCR
+        CALL    PRINT2
+;
+; ************************************************************
+; *     MAIN PROCESSING LOOP                                 *
+; ************************************************************
+;
+;       *** INPUT PROCESSING ***
+;
+LOOP    EQU     $
+        IN      A,(SSTAT)       ;SEE IF SERIAL DATA CAME IN
+        BIT     0,A
+        JP      Z,CHKKB         ;   IF NOT, GO CHECK KEYBOARD
+        IN      A,(SDATA)       ;   IF SO, GET THE DATA
+        AND     7FH             ;      STRIP THE HIGH BIT
+        JR      Z,CHKKB		;         IGNORE NULLS
+;
+;	CALL	DEBUG	;ENABLE FOR DEBUGGING
+;
+        CP      ESC             ;      CHECK FOR ESCAPE SEQUENCE
+        JP      Z,ESCAPE        ;         IF SO, GO FIND MEANING
+;
+	CP	0EH
+        JR      Z,CHKKB		;         IGNORE G1 CHAR SET
+	CP	0FH
+        JR      Z,CHKKB		;         IGNORE G0 CHAR SET
+;
+	CP	13H
+	JR	NZ,DISPL	; IF HOST SENDS X-OFF, LOOP UNTIL
+XOFF:	CALL	RECV		;   WE RECEIVE A X-ON
+	CP	11H
+	JR	NZ,XOFF
+	JR	CHKKB
+;
+DISPL:  LD      E,A             ;   DISPLAY THE DATA
+        LD      C,2
+        CALL    BDOS
+;
+;       *** OUTPUT PROCESSING ***
+;
+CHKKB   EQU     $
+        CALL    KBIN            ;CHECK FOR KEYBOARD INPUT
+        JR      Z,LOOP          ;   IF NONE, REPEAT LOOP
+        CP      CTRLMN          ;   CHECK FOR CTRL-MINUS (ABORT)
+        JP      Z,GOCPM         ;      IF SO, RETURN TO CP/M
+;
+;   CHECK FOR BACK-SLASH (USED AS PF-KEY FLAG)
+	CP	BCKSL
+	JR	NZ,CHKB7
+KBLP:	CALL	KBIN		;GET NEXT KEYBOARD INPUT
+	JR	Z,KBLP		; WAIT UNTIL SOMETHING COMES
+;
+	BIT	7,A		;IF NOT A CURSOR KEY, SEND IT
+	JR	Z,KSEND		; OUT ANYWAY
+;
+	CP	CURUP		;CURSOR UP?
+	JR	NZ,PFK2		;  IF NOT, TRY #2
+	CALL	ESCO
+	LD	C,'P'		;  ELSE, SEND PFK1
+	JR	KBOUT
+PFK2:	CP	CURDWN		;CURSOR DOWN?
+	JR	NZ,PFK3		;  IF NOT, TRY #3
+	CALL	ESCO
+	LD	C,'Q'		;  ELSE, SEND PFK2
+	JR	KBOUT
+PFK3:	CP	CURLFT		;CURSOR LEFT?
+	JR	NZ,PFK4		;  IF NOT, TRY #4
+	CALL	ESCO
+	LD	C,'R'		;  ELSE, SEND PFK3
+	JR	KBOUT
+PFK4:	CP	CURRT		;CURSOR RIGHT?
+	JR	NZ,KFIX		;  IF NOT, FIX IT
+	CALL	ESCO		;    AND SEND IT OUT
+	LD	C,'S'		;  ELSE, SEND PFK4
+	JR	KBOUT
+;
+KFIX:	AND 	7FH		;STRIP HIGH BIT OFF
+	JR	KSEND
+;
+;   CHECK BIT 7, TO LOOK FOR CURSOR OR KEYPAD CHARACTERS
+;
+CHKB7:	BIT	7,A
+	JR	Z,KSEND		;OTHERWISE, GO SEND IT OUT
+;
+        CP      CURUP           ;   CHECK FOR CURSOR-UP
+        JR      NZ,KB1          ;      IF NOT, SKIP OVER
+        CALL    ESCSEQ          ;      ELSE, SUBSTITUTE <ESC [A>
+        LD      C,'A'
+        JR      KBOUT
+KB1:    CP      CURDWN          ;   CHECK FOR CURSOR-DOWN
+        JR      NZ,KB2          ;      IF NOT, SKIP OVER
+        CALL    ESCSEQ          ;      ELSE, SUBSTITUTE <ESC [B>
+        LD      C,'B'
+        JR      KBOUT
+KB2:    CP      CURRT           ;   CHECK FOR CURSOR-RIGHT
+        JR      NZ,KB3          ;      IF NOT, SKIP OVER
+        CALL    ESCSEQ          ;      ELSE, SUBSTITUTE <ESC [C>
+        LD      C,'C'
+        JR      KBOUT
+KB3:    CP      CURLFT          ;   CHECK FOR CURSOR-LEFT
+        JR      NZ,KP1          ;      IF NOT, IS IT KEYPAD?
+        CALL    ESCSEQ          ;      ELSE, SUBSTITUTE <ESC [D>
+        LD      C,'D'
+        JR      KBOUT
+;
+KSEND:  LD      C,A             ;   OTHERWISE,
+KBOUT:  CALL    SEROUT          ;      GO SEND IT OUT
+        JP      LOOP            ; REPEAT LOOP
+;
+KP1:	AND	7FH		;STRIP HIGH BIT, & SAVE CHAR
+	LD	C,A
+	LD	A,(KEYPD)	;ARE WE IN KEYPAD MODE?
+	AND	A
+	JR	Z,KBOUT		;  IF NOT, SEND CHAR AS IS
+;
+	LD	A,C		;OTHERWISE, CONSTRUCT KEYPAD
+	ADD	A,40H		;     CHARACTER
+	PUSH	AF
+	CALL	ESCO		;  AND SEND IT OUT
+	POP	AF
+	JR	KSEND
+;
+; ************************************************************
+; *     END OF MAIN PROCESSING LOOP                          *
+; ************************************************************
+;
+;   UTILITY ROUTINES
+;
+BEEP    EQU     $               ;BEEP THE KEYBOARD
+        LD      A,4
+        OUT     (KBDATA),A
+        RET
+;
+CLRSCR  EQU     $               ;CLEAR THE SCREEN
+        LD      E,1AH
+        LD      C,2
+        CALL    BDOS
+        RET
+;
+KBIN    EQU     $               ;READ THE KEYBOARD
+        LD      E,0FFH
+        LD      C,6
+        CALL    BDOS
+        AND     A
+        RET
+;
+SEROUT  EQU     $               ;OUTPUT TO SERIAL PORT
+        IN      A,(SSTAT)
+        BIT     2,A
+        JR      Z,SEROUT
+        LD      A,C
+        OUT     (SDATA),A
+        RET
+;
+;   TEST FOR ESCAPE SEQUENCE OR CONTROL SEQUENCE
+;
+ESCAPE  EQU	$
+        CALL    RECV            ;RECEIVE NEXT CODE
+        CP      '['             ; IF IT IS A '[', THIS IS A
+        JP      NZ,ESCX		;   CONTROL SEQUENCE
+;
+;   CONTROL SEQUENCE PROCESSING
+;
+	CALL	CLEARP		;CLEAR OUT PARMS
+        CALL    RECV            ;RECEIVE NEXT CODE
+;
+	CP	'?'		;IF IT IS AN '?', IGNORE THE
+	JP	Z,SKIP		;   FOLLOWING PARAMETERS
+;
+	CP	40H		;IS THIS A FINAL LETTER CODE?
+	JP	C,GETP		;  IF NOT, GO GET PARAMETERS
+;
+;   OTHERWISE, FIGURE OUT WHAT NEEDS TO BE DONE
+;
+UPLOW:	CP	60H		;IS IT LOWER CASE?
+	JP	NC,LOWC
+;
+UPCASE:	EQU	$
+;
+        CP      'K'
+        JR      NZ,ESCJ
+CLEOL:	EQU	$
+	LD	A,18H           ;ESC [K = CLEAR-TO-END-OF-LINE
+;	LD	A,'@'		;DEBUG - USE FOR VT100DBG (NOT VT100D)
+        JP	DISPL
+;
+ESCJ:   CP      'J'
+        JR      NZ,ESC2
+CLEOS:  EQU	$
+	LD      A,17H           ;ESC [J = CLEAR-TO-END-OF-SCREEN
+;	LD      A,'@'           ;DEBUG - USE FOR VT100DBG (NOT VT100D)
+        JP      DISPL
+;
+ESC2:   CP      'D'
+        JR      NZ,ESC3
+	LD	HL,ROW1		;GET PARAM
+	CALL	LOADP
+	LD	B,01H
+	JR	Z,ELD2		;IF A WAS ZERO, DO ONCE ANYWAY
+	LD	B,A
+ELD2:   LD      A,08H           ;ESC [D = BACKSPACE
+ELP2:	CALL	DISPL1
+	DJNZ	ELP2
+	JP	CHKKB
+;
+ESC3:   CP      'B'
+        JR      NZ,ESC4
+	LD	HL,ROW1		;GET PARAM
+	CALL	LOADP
+	LD	B,01H
+	JR	Z,ELD3		;IF A WAS ZERO, DO ONCE ANYWAY
+	LD	B,A
+ELD3:   LD      A,0AH           ;ESC [B = CURSOR-DOWN
+ELP3:	CALL	DISPL1
+	DJNZ	ELP3
+	JP	CHKKB
+;
+ESC4:   CP      'A'
+        JR      NZ,ESC5
+	LD	HL,ROW1		;GET PARAM
+	CALL	LOADP
+	LD	B,01H
+	JR	Z,ELD4		;IF A WAS ZERO, DO ONCE ANYWAY
+	LD	B,A
+ELD4:   LD      A,0BH           ;ESC [A = CURSOR-UP
+ELP4:	CALL	DISPL1
+	DJNZ	ELP4
+	JP	CHKKB
+;
+ESC5:   CP      'C'
+        JR      NZ,ESC6
+	LD	HL,ROW1		;GET PARAM
+	CALL	LOADP
+	LD	B,01H
+	JR	Z,ELD5		;IF A WAS ZERO, DO ONCE ANYWAY
+	LD	B,A
+ELD5:   LD      A,0CH           ;ESC [C = CURSOR-RIGHT
+ELP5:	CALL	DISPL1
+	DJNZ	ELP5
+	JP	CHKKB
+;
+ESC6:   CP      'H'		;ESC [ P1;P2 H, POSTION CURSOR
+        JP      NZ,ESC7
+	CALL	PUTCUR
+	JP	CHKKB
+;
+ESC7:	CP	'P'		;ESC [ P1 P, DELETE CHAR(S)
+	JP	NZ,ESC8
+	LD	HL,ROW1		;GET PARAM
+	CALL	LOADP
+	LD	B,01H
+	JR	Z,ELD7		;IF A WAS ZERO, DO ONCE ANYWAY
+	LD	B,A
+ELD7:   LD      A,0CH		; MOVE CURSOR TO RIGHT
+	CALL	DISPL1
+	LD	A,7FH		; THEN DELETE CHAR
+	CALL	DISPL1
+	DJNZ	ELD7
+	JP	CHKKB
+;
+ESC8:	CP	'L'		;ESC [ P1 L, INSERT LINE(S)
+	JP	NZ,ESC9
+	LD	HL,ROW1		;GET PARAM
+	CALL	LOADP
+	LD	B,01H
+	JR	Z,ELD8		;IF A WAS ZERO, DO ONCE ANYWAY
+	LD	B,A
+ELD8:   LD      A,ESC		; SEND KAYPRO SEQ TO INSERT LINE
+	CALL	DISPL1
+	LD	A,'E'
+	CALL	DISPL1
+	DJNZ	ELD8
+	JP	CHKKB
+;
+ESC9:	CP	'M'		;ESC [ P1 M, DELETE LINE(S)
+	JP	NZ,ESC10
+	LD	HL,ROW1		;GET PARAM
+	CALL	LOADP
+	LD	B,01H
+	JR	Z,ELD9		;IF A WAS ZERO, DO ONCE ANYWAY
+	LD	B,A
+ELD9:   LD      A,ESC		; SEND KAYPRO SEQ TO DEL LINE
+	CALL	DISPL1
+	LD	A,'R'
+	CALL	DISPL1
+	DJNZ	ELD9
+	JP	CHKKB
+;
+ESC10:	JP	UNKE		;NOT SURE WHAT THIS IS
+;
+LOWC	EQU	$		;LOWER CASE FINAL LETTER CODE
+;
+	CP	'm'		;GRAPHIC CODE - FORGET IT
+	JP	Z,SKIPC
+	CP	'r'		;SET SCROLLING REGION
+	JP	NZ,LCX1		; KAYPRO CAN'T HANDLE THIS,
+	LD	A,1EH		; BUT NEED TO HOME CURSOR
+	JP	DISPL		; SINCE VT100 DOES IT
+;
+LCX1:	CP	'f'
+	JP	NZ,LCX2		;HORIZ & VERT POSITION - USE PUTCUR
+	CALL	PUTCUR
+	JP	CHKKB
+LCX2:	CP	'i'
+	JP	Z,SKIPC		;PRINT COMMANDS - SKIP
+	CP	'h'
+	JP	Z,SKIPC		;SETTING MODE - SKIP IT
+	CP	'l'
+	JP	Z,SKIPC		;RESETTING MODE - SKIP IT
+	CP	'n'
+	JP	Z,SKIPC		;REPORTING - SKIP THEM
+	CP	'c'
+	JP	Z,SKIPC		;DEVICE ATTRIBUTE - SKIP
+	CP	'g'
+	JP	Z,SKIPC		;TAB STOP SET - SKIP
+	CP	'y'
+	JP	Z,SKIPC		;SELF TESTS - SKIP
+	CP	'q'
+	JP	Z,SKIPC		;KEYBOAD LEDS - SKIP
+;
+	JP	UNKE		;WHAT IS IT?
+;
+CLEARP: LD	A,00H		;CLEAR PARM ARRAYS
+        LD      (ROW1),A	;  IN ROW & COL ARRAYS
+	LD      (ROW2),A
+	LD      (ROW3),A
+        LD      (COL1),A
+	LD      (COL2),A
+	LD      (COL3),A
+	RET
+;
+GETP:	EQU	$		;GET PARAMETERS & SAVE THEM
+        CP      ';'             ;CHECK IF FIRST PARAMETER = 0
+        JR      Z,GETCOL
+
+	LD	HL,ROW2
+	LD	(HL),A		;STORE ONES DIGIT
+        CALL    RECV            ;GET NEXT PARAMETER
+        CP	40H		; IF NONE, GO TO LETTER DETECT
+        JP      NC,UPLOW
+        CP      ';'             ;ONLY ONE DIGIT?
+        JR      Z,GETCOL
+	LD	B,(HL)		;MOVE ONES DIGIT TO TENS PLACE
+	DEC	HL
+	LD	(HL),B
+	INC	HL
+	LD	(HL),A		; NO, SAVE 2ND PARM
+;
+	CALL    RECV            ;GET NEXT PARAMETER
+        CP	40H		; IF NONE, GO TO LETTER DETECT
+        JP      NC,UPLOW
+        CP      ';'             ;IF THREE DIGITS, SKIP IT
+        JP      NZ,SKIP		; NOT SURE WHAT TO DO
+;
+GETCOL: CALL	RECV		;SKIP OVER ';'
+	CP	40H		; IF NO COL, GO TO LETTER DETECT
+        JP      NC,UPLOW
+	LD      HL,COL2		;SAVE ONES DIGIT
+	LD	(HL),A
+        CALL    RECV            ;GET NEXT PARAMETER
+        CP	40H		; IF NONE, GO TO LETTER DETECT
+        JP      NC,UPLOW
+	LD	B,(HL)		;MOVE ONES DIGIT TO TENS PLACE
+	DEC	HL
+	LD	(HL),B
+	INC	HL		;SAVE ONES DIGIT
+        LD	(HL),A
+;
+GETNXT: CALL    RECV            ;GET THIRD PARAMETER (IGNORED)
+	CP	40H		; IF NONE, GO TO LETTER DETECT
+	JP	NC,UPLOW
+	JR	GETNXT		;OTHERWISE, LOOP UNTIL WE FIND ONE
+;
+LOADP:	LD	A,(HL)		;LOAD SINGLE PARAMETER INTO A
+	AND	0FH		;STRIP UPPER BITS OF TENS DIGIT
+	RLCA			;MULTIPLY BY TWO
+	LD	B,A		; STORE 2X IN B
+	RLCA			;  4X
+	RLCA			;  8X
+	ADD	A,B		; 2X+8X = 10X
+	LD	B,A		;SET ASIDE IN B REG
+	INC	HL
+	LD	A,(HL)		; & GET ONES DIGIT
+	AND	0FH
+	ADD	A,B		; RESULT IS IN A REG.
+	RET
+;
+PUTCUR: LD      A,ESC           ;ALL REQUIRED CHARS RECEIVED.
+        CALL    DISPL1          ;NOW CREATE KAYPRO EQUIVALENT.
+        LD      A,3DH
+        CALL    DISPL1
+        LD      HL,ROW1
+        CALL	LOADP
+        ADD     A,20H		; KAYPRO CODES START AT 20H
+	CP	20H		; KAYPRO ROWS=0-23, VT100=1-24
+	JR	Z,PUTROW
+	DEC	A
+	CP	38H		; KAYPRO ONLY HAS 24 ROWS
+	JR	C,PUTROW
+	LD	A,37H
+PUTROW:	CALL    DISPL1
+        LD      HL,COL1
+        CALL	LOADP
+        ADD     A,20H		; KAYPRO CODES START AT 20H
+	CP	20H		; DECREMENT UNLESS AT ZERO
+	JR	Z,PUTCOL
+	DEC	A
+	CP	70H		; LIMIT COLS TO 80
+	JR	C,PUTCOL
+	LD	A,6FH
+PUTCOL:	CALL    DISPL1
+        RET
+;
+SKIP:	EQU	$		;SKIP OVER NEXT PARAMETERS,
+	CALL	RECV		; UNTIL LETTER HIT, THEN
+SKIP2:	CP	40H		; SKIP IT TOO
+	JR	C,SKIP
+	JP	CHKKB
+;
+SKIPC:	EQU	$		;SKIP COMMAND (OR DEBUG)
+;	CALL	DEBUG		; ENABLE FOR VT100D (NOT VT100DBG)
+	JP	CHKKB
+;
+;   ESCAPE SEQUENCE PROCESSING
+;
+ESCX:	EQU	$		;PROCESS ESCAPE SEQUENCES
+	CP	'>'		;ENTER NUMERIC KEYPAD MODE
+	JR	NZ,EX2
+	XOR	A
+	LD	(KEYPD),A
+	JP	CHKKB
+EX2:	CP	'='
+	JR	NZ,EX3
+	LD	A,01H
+	LD	(KEYPD),A
+	JP	CHKKB
+EX3:	CP	'#'		;IGNORE LINE ATTRIBUTES
+	JR	NZ,EX4
+	CALL	RECV		;DROP NEXT CHARACTER TOO
+	JP	CHKKB
+EX4:	CP	'N'		;IGNORE SINGLE SHIFT 2
+	JP	Z,CHKKB
+	CP	'('		;IGNORE SPECIAL CHARACTER SETS
+	JR	NZ,EX5
+	CALL	RECV		;DROP NEXT CHARACTER TOO
+	JP	CHKKB
+EX5:	CP	')'
+	JR	NZ,EX6
+	CALL	RECV
+	JP	CHKKB
+EX6:	CP	'<'		;IGNORE SWITCH TO ANSI MODE
+	JP	Z,CHKKB
+	CP	'O'		;IGNORE SINGLE SHIFT 3
+	JP	Z,SKIPC
+	CP	'D'		;INDEX - SCROLLS SCREEN UP
+	JP	NZ,EX7		; KAYPRO EQUIV IS DELETE LINE
+	LD	A,1EH		;  AT TOP OF SCREEN?
+	CALL	DISPL1
+	LD	A,ESC
+	CALL	DISPL1
+	LD	A,'R'
+	CALL	DISPL1
+	JP	CHKKB
+EX7:	CP	'M'		;REVERSE INDEX IS USED TO SCROLL
+	JR	NZ,EX8		; SCREEN DOWN
+	LD	A,ESC		; KAYPRO EQUIV IS INSERT LINE?
+	CALL	DISPL1
+	LD	A,'E'
+	CALL	DISPL1
+	JP	CHKKB
+EX8:	CP	'E'		;IGNORE NEXT LINE ??
+	JP	Z,SKIPC
+	CP	'7'		;IGNORE SAVE CURSOR
+	JP	Z,SKIPC
+	CP	'8'		;IGNORE RESTORE CURSOR
+	JP	Z,SKIPC
+	CP	'H'		;IGNORE HORIZ TAB SET
+	JP	Z,SKIPC
+	CP	'Z'		;IGNORE IDENTIFY TERMINAL
+	JP	Z,SKIPC
+	CP	'c'		;IGNORE RESET TO INITIAL STATE
+	JP	Z,SKIPC
+	CP	'\'		;IGNORE STRING TERMINATOR
+	JP	Z,CHKKB
+;
+UNK:	PUSH    AF              ;IF RECEIVED <ESC>, BUT NEXT
+        LD      A,1FH           ;   CHARACTER IS NONE OF ABOVE,
+        CALL    DISPL1          ;   SEND SOLID BLOCK, THEN THE
+        POP     AF              ;   ORIGINAL CHARACTER IN HEX.
+        CALL    BYTHXA
+        LD      A,H
+        CALL    DISPL1
+        LD      A,L
+        CALL    DISPL1
+        JP      CHKKB
+;
+UNKE:	PUSH    AF              ;IF RECEIVED <ESC [>, BUT NEXT
+        LD      A,1FH           ;   3 CHARACTERS UNRECOGNIZABLE,
+        CALL    DISPL1          ;   SEND A SOLID BLOCK, A "[",
+        LD      A,'['           ;   AND THEN THE PARAMETER
+        CALL    DISPL1          ;   CHARACTERS IN HEX.
+        LD      A,(ROW1)
+        CALL    BYTHXA
+        LD      A,H
+        CALL    DISPL1
+        LD      A,L
+        CALL    DISPL1
+        LD      A,(ROW2)
+        CALL    BYTHXA
+        LD      A,H
+        CALL    DISPL1
+        LD      A,L
+        CALL    DISPL1
+        LD      A,(COL1)
+        CALL    BYTHXA
+        LD      A,H
+        CALL    DISPL1
+        LD      A,L
+        CALL    DISPL1
+        LD      A,(COL2)
+        CALL    BYTHXA
+        LD      A,H
+        CALL    DISPL1
+        LD      A,L
+        CALL    DISPL1
+        POP     AF
+        CALL    BYTHXA
+        LD      A,H
+        CALL    DISPL1
+        LD      A,L
+        CALL    DISPL1
+        JP      CHKKB
+;
+ESCSEQ  EQU     $               ;SEND VT100 ESCAPE
+        LD      C,ESC           ;     SEQUENCE <ESC [>
+        CALL    SEROUT
+        LD      C,'['
+        CALL    SEROUT
+        RET
+;
+ESCO	EQU     $               ;SEND ESCAPE + 'O'
+        LD      C,ESC		;  (FOR KEYPAD CHARS)
+        CALL    SEROUT
+        LD      C,'O'
+        CALL    SEROUT
+        RET
+;
+RECV    EQU     $               ;DEDICATED RECEIVE-ONLY ROUTINE
+        IN      A,(SSTAT)
+        BIT     0,A
+        JR      Z,RECV
+        IN      A,(SDATA)
+        AND     7FH
+	JR	Z,RECV		;SKIP OVER NULLS
+;	CALL	DEBUG		;***ENABLE FOR DEBUGGING
+        RET
+;
+DISPL1  EQU     $               ;DEDICATED SCREEN DISPLAY
+        PUSH    HL              ;       ROUTINE
+	PUSH	BC		; (DOES NOT PRESERVE DE REG)
+	PUSH	AF
+        LD      E,A
+        LD      C,2
+        CALL    BDOS
+	POP	AF
+	POP	BC
+        POP     HL
+        RET
+;
+DEBUG	EQU	$
+	PUSH	HL
+	PUSH	DE		;SHOW ':', FOLLOWED BY
+	PUSH	BC		; UNKNOWN CHARACTER IN HEX
+	PUSH	AF
+	LD	A,':'
+	CALL	DISPL1
+	POP	AF
+	PUSH	AF
+        CALL    BYTHXA
+        LD      A,H
+        CALL    DISPL1
+        LD      A,L
+	CALL	DISPL1
+	POP	AF
+	POP	BC
+	POP	DE
+	POP	HL
+	RET
+;
+; *** BYTE-TO-HEX-ASCII ROUTINE ***
+
+BYTHXA  EQU     $		;CONVERTS CHAR IN A REG TO
+        PUSH    AF		; HEX CHARS IN HL REG
+        RRCA
+        RRCA
+        RRCA
+        RRCA
+        CALL    NIBHX1
+        LD      H,A
+        POP     AF
+        PUSH    AF
+        CALL    NIBHX1
+        LD      L,A
+        POP     AF
+        RET
+;
+; *** NIBBLE-TO-HEX-ASCII ROUTINE ***
+;
+NIBHX1  EQU     $		; SEE LEVENTHAL, P. 7-3
+        AND     0FH
+	ADD	A,90H
+	DAA
+        ADC     A,40H
+	DAA
+        RET
+;
+PRINT1  EQU     $               ;DISPLAY THE INTRO MESSAGE
+        LD      C,9
+        LD      DE,INTRO
+        CALL    BDOS
+        RET
+;
+INTRO   EQU     $
+        DEFB    0DH,0AH
+        DEFB    '** VT100 TERMINAL EMULATION **'
+        DEFB    '      by A. Drake',0AH,0DH,0AH
+        DEFB    'Full-duplex, 8 bits/character, '
+        DEFB    'no parity, and 1200 baud.',0AH,0DH,0AH
+        DEFB    'Translations made by this program:'
+        DEFB    0AH,0AH,0DH
+        DEFB    'Incoming codes:',0AH,0DH
+        DEFB    '   1) Character attributes and Nulls'
+        DEFB    ' (00 hex) are ignored',0AH,0DH
+        DEFB    '   2) Cursor direction ("arrows")',0AH,0DH
+        DEFB    '   3) Cursor "XY" positioning',0AH,0DH
+        DEFB    '   4) CLEAR-TO-END-OF-LINE (see note)'
+        DEFB    0AH,0DH
+        DEFB    '   5) CLEAR-TO-END-OF-SCREEN',0AH,0DH
+        DEFB    '   6) CLEAR-SCREEN',0AH,0AH,0DH
+        DEFB    'Outgoing codes:',0AH,0DH
+        DEFB    '   1) Cursor direction ("arrows")',0AH,0DH,0AH
+        DEFB    'Note:     CLEAR-FROM-CURSOR-TO-END-OF-LINE is '
+        DEFB    'treated the',0AH,0DH
+        DEFB    'same as CLEAR-ALL-OF-LINE since the Kaypro II '
+        DEFB    'has no',0AH,0DH
+        DEFB    'direct equivalent of the former.',0DH,0AH,0AH
+        DEFB    'Press <RETURN> to begin, or <ESC> to abort:'
+        DEFB    0AH,0DH
+        DEFB    '$'
+;
+PRINT2  EQU     $               ;DISPLAY THE SECOND MESSAGE
+        LD      C,9
+        LD      DE,MSG1
+        CALL    BDOS
+        RET
+;
+MSG1    EQU     $
+        DEFB    0AH,0DH
+        DEFB    '(Press CTRL-MINUS to abort this program.)'
+        DEFB    0AH,0DH,0AH
+        DEFB    '$'
+;
+KEYPD:  DEFB	0		;KEYPAD MODE(0-OFF,1-ON)
+PARCT:  DEFB	0		;PARAMETER COUNTS
+;
+ROW1:   DEFB    0               ;CURSOR ROW POSITION
+ROW2:   DEFB    0		;  (OR OTHER PARAMETERS)
+ROW3:   DEFB    0
+COL1:   DEFB    0               ;CURSOR COLUMN POSITION
+COL2:   DEFB    0
+COL3:   DEFB    0
+;
+SSIZE   EQU     $
+        DEFB    09
+SPROG   EQU     $               ;SIO CONTROL BYTES
+        DEFB    18H             ;CHANNEL RESET
+        DEFB    04H             ;WR4
+        DEFB    44H             ;1 STOP BIT, 16X CLOCK
+        DEFB    01H             ;WR1
+        DEFB    00H             ;NO INTERRUPTS
+        DEFB    03H             ;WR3
+        DEFB    0C1H            ;8 BITS/CHAR, RECEIVE ENABLE
+        DEFB    05H             ;WR5
+        DEFB    0EAH            ;DTR,RTS, 8 BITS/CHAR, TRANSMIT ENABLE
+        END

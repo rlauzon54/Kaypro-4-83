@@ -1,0 +1,11 @@
+                Fast Terminal Program
+
+	This program came from a public domain utility disk distributed
+by Micro Cornucopia magazine (P.O. Box 223, Bend Oregon 97709).  It is an
+interrupt driven fast scrolling dumb terminal program for the Kaypro CP/M
+computers that allows the use of fast baud rates without dropping characters.
+Usage is simple; set your baud rate, call up the program and go.  The only
+way out is to hit the reset button.  I've seen it used to run an S-100   
+system with a Kaypro as the terminal at 9600 baud.  All other terminal 
+programs lost characters at that speed.  It appears to emulate an ADM3A
+terminal.

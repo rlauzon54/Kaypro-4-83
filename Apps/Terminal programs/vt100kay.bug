@@ -1,0 +1,27 @@
+This is VT100.BUG
+
+      Known Bugs & Problems
+
+      DELETE LINE, ANY SCROLLING OR PAGING COMMAND, REVERSE
+   VIDEO.
+
+      EDT uses SET SCROLL to delete lines, by setting the
+   scrolling region to the line you are on down to the bottom
+   of the screen, then it sends a new line from the file to the
+   bottom, and finally it resets the scrolling region to what
+   it was.  The effect is to push the unwanted line off the
+   screen.  I'm not sure how to do this on the Kaypro, since
+   the program doesn't know what line you are on.
+
+      To get around this, you can use control-R or control-W to
+   repaint the screen each time you delete a line.
+
+      SCROLLING with the arrow keys down past where a scroll is
+   required will not insert a new line properly.  Scrolling
+   upwards works, but two extra lines fall down into the
+   message region.
+
+      Again, you can repaint the screen to get around this.
+
+      Selected regions are not highlighted, because I have an
+   older KAYPRO II which does not support graphics.
