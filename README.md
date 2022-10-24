@@ -15,6 +15,7 @@ My kaypro 4/83 setup
     - zcsoli10 - Solitare
     - zork123_80 - Zork 1, 2 & 3
     - Othello
+    - Millebns - Mille Bournes - Ported from MS-DOS.
 - Gotek - Gotek images for the Kaypro 4/83.  Note that these probably won't work on any other Kaypro model.
 - Utils - Various utilities - un-compress utilities, diagnostic utilities
 
