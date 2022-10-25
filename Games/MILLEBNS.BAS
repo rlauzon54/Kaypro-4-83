@@ -24,12 +24,12 @@
 290 print FNLO$(15,C25);"You drew a"D$(P(7))" (7)"+SPACE$(12): F=C25
 300 IF INKEY$ <> "" THEN 300 ' clear buffer
 310 print FNLO$(20,C25);SPACE$(79);SPACE$(79): print FNLO$(21,C25);"Action to take ? ";
-320 GOSUB 1760: IF INSTR("DPC", V$)=0 THEN BEEP: print FNLO$(20,C25);"(Must type D, P, or C)":print FNLO$(21,CROLL);: GOTO 320
-330 IF V$="" THEN BEEP: GOTO 310
+320 GOSUB 1760: IF INSTR("DPC", V$)=0 THEN print chr$(7);FNLO$(20,C25);"(Must type D, P, or C)":print FNLO$(21,CROLL);: GOTO 320
+330 IF V$="" THEN print chr$(7): GOTO 310
 340 print FNLO$(21,C25);
 350 IF V$="P" THEN PRINT "Play "; ELSE IF V$="D" THEN PRINT "Discard "; ELSE PRINT "Coup fourre ";
 360 PRINT "which card ? ";
-370 V1$=INPUT$(C25):IF V1$=CHR$(27) THEN 290 ELSE IF V1$<"1" OR V1$>"7" THEN BEEP: XP=POS(0):YP=CSRLIN: print FNLO$(20,1);"(Must be from 1 to 7) ": print FNLO$(YP,XP);: GOTO 370
+370 V1$=INPUT$(C25):IF V1$=CHR$(27) THEN 290 ELSE IF V1$<"1" OR V1$>"7" THEN XP=POS(0):YP=CSRLIN: print chr$(7);FNLO$(20,1);"(Must be from 1 to 7) ": print FNLO$(YP,XP);: GOTO 370
 380 PRINT V1$: C1=VAL(V1$)
 390 I=C1: C1=P(C1)
 400 IF V$<>"C" THEN 500
